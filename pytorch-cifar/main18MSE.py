@@ -125,7 +125,7 @@ def test(epoch):
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
 
-            progress_bar(batch_idx, len(testloader), 'MSE Loss: %.3f'
+            progress_bar(batch_idx, len(testloader), 'Loss: %.3f | MSE Loss: %.3f'
                          % (test_loss/(batch_idx+1)))
 
     # Save checkpoint.
