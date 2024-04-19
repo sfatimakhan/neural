@@ -15,11 +15,11 @@ from models import *
 from utils import progress_bar
 
 # Define the directory path for the log file inside the 'checkpoint' directory
-log_dir = './checkpoint/log18-CIFAR100/'
+log_dir = './checkpoint/log18MSE-CIFAR100/'
 os.makedirs(log_dir, exist_ok=True)  # Create the directory if it doesn't exist
 
 # Define the file path where you want to save the logs
-log_file = os.path.join(log_dir, 'training_logs18.txt')
+log_file = os.path.join(log_dir, 'training_logs18MSE.txt')
 sys.stdout = open(log_file, 'w')
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR100 Training')
@@ -29,7 +29,7 @@ parser.add_argument('--resume', '-r', action='store_true',
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-best_acc = 0  # best test accuracy
+best_mse_loss = float('inf') # best test accuracy
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 
 # Data
@@ -68,12 +68,12 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/CIFAR100-resnet18.pth')
+    checkpoint = torch.load('./checkpoint/CIFAR100-resnet18MSE.pth')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
 
-criterion = nn.CrossEntropyLoss()
+criterion = nn.MSELoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=0.9, weight_decay=5e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
@@ -90,7 +90,8 @@ def train(epoch):
         inputs, targets = inputs.to(device), targets.to(device)
         optimizer.zero_grad()
         outputs = net(inputs)
-        loss = criterion(outputs, targets)
+        targets_onehot = F.one_hot(targets, num_classes=100).float()
+        loss = criterion(outputs, targets_onehot)
         loss.backward()
         optimizer.step()
 
@@ -99,8 +100,8 @@ def train(epoch):
         total += targets.size(0)
         correct += predicted.eq(targets).sum().item()
 
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                     % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | MSE Loss: %.3f'
+                     % (train_loss/(batch_idx+1), loss.item()))
     
     test_loss, correct, total = test(epoch)  # Updated to capture test results
     print_test_results(epoch, correct, total, test_loss, batch_idx)  # Added print_test_results
@@ -116,15 +117,16 @@ def test(epoch):
         for batch_idx, (inputs, targets) in enumerate(testloader):
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = net(inputs)
-            loss = criterion(outputs, targets)
+            targets_onehot = F.one_hot(targets, num_classes=100).float()
+            loss = criterion(outputs, targets_onehot)
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
 
-            progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                         % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+            progress_bar(batch_idx, len(testloader), 'Loss: %.3f | MSE Loss: %.3f'
+                         % (test_loss/(batch_idx+1)))
 
     # Save checkpoint.
     acc = 100.*correct/total
@@ -137,7 +139,7 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/CIFAR100-resnet18.pth')
+        torch.save(state, './checkpoint/CIFAR100-resnet18MSE.pth')
         best_acc = acc
 
     return test_loss, correct, total
@@ -149,7 +151,7 @@ def print_test_results(epoch, correct, total, test_loss, batch_idx):
         f.write(f'Loss: {test_loss/(batch_idx+1):.4f}\n')
 
 
-for epoch in range(start_epoch, start_epoch+50):
+for epoch in range(start_epoch, start_epoch+2):
     train(epoch)
     test(epoch)
     scheduler.step()
